@@ -82,10 +82,12 @@ def extract_pdf_as_csv(start_year, end_year):
             pdf_files = list(pdf_year_dir.glob("*.pdf"))
             progress_bar = tqdm(pdf_files, desc=f"Processing PDFs for {year}", unit="file")
             
+            processed_ids = validate_trades(year)
             for pdf_file in progress_bar:
-                progress_bar.set_postfix_str(f"Current file: {pdf_file.name}")
-                retry_attempts = 0
-                success = False
+                docid = pdf_file.stem
+                if docid in processed_ids:
+                    progress_bar.write(f"Skipping {pdf_file.name} - already processed")
+                    continue
                 
                 while retry_attempts <= 2 and not success:
                     try:

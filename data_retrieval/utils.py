@@ -1,6 +1,5 @@
 from config import CSV_DIR, CSV_CLEANED_DIR
 import logging
-from clean_csv import clean_csv
 from pathlib import Path
 from datetime import datetime
 from pathlib import Path
@@ -11,26 +10,64 @@ from typing import Optional
 import pandas as pd
 
 # Will need to check later if this error handling actually holds up
-# Probably should add logging to all of these...
+# Probably should add logging to all (if not most) of these...
 
 logger = logging.getLogger(__name__)
 
-def validate_trades(year): # This one was a pain to sort out. Should be working now
+
+def validate_trades(year):
+    # Declare file paths
     source_path = CSV_DIR / f"{year}_house_trades.csv"
     validated_path = CSV_CLEANED_DIR / f"{year}_house_trades_cleaned.csv"
 
-    if not source_path.exists() or not validated_path.exists():
-        return
-
-    source_df = pd.read_csv(source_path)
-    validated_df = pd.read_csv(validated_path)
-    validated_doc_ids = set(validated_df["DocID"])
+    # Validate file paths
+    if not validated_path.exists() or not source_path.exists():
+        logger.warning(f"File path(s) not found")
+        return False
     
-    for _, row in source_df.iterrows():
-        if row["DocID"] not in validated_doc_ids:
-            pass
-        else:
-            print(f"DocID {row['DocID']} already processed. Skipping...")
+    try:
+        # Read source and validated CSVs
+        source_df = pd.read_csv(source_path)
+        validated_df = pd.read_csv(validated_path)
+
+        # Access the DocID column both CSVs
+        source_doc_ids = set(source_df["DocID"])
+        validated_doc_ids = set(validated_df["DocID"])
+
+        
+
+
+
+
+
+
+
+
+
+def validate_trades(year):
+    source_path = CSV_DIR / f"{year}_house_trades.csv"
+    validated_path = CSV_CLEANED_DIR / f"{year}_house_trades_cleaned.csv"
+
+    if not validated_path.exists() or not source_path.exists():
+        logger.warning(f"Cannot find file path(s) for {year}")
+        return set()
+
+    try:
+        validated_df = pd.read_csv(validated_path)
+        source_df = pd.read_csv(source_path)
+        
+        validated_doc_ids = set(validated_df["DocID"])
+        source_doc_ids = set(source_df["DocID"])
+        
+        already_processed = source_doc_ids.intersection(validated_doc_ids)
+        for doc_id in already_processed:
+            logger.warning(f"{doc_id} has already been processed. Skipping")
+            
+        return already_processed
+        
+    except Exception as e:
+        logger.error(f"Error reading files: {e}")
+        return set()
 
 def year_error_handling(start_year, end_year):
     current_year = datetime.now().year
