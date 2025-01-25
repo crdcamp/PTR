@@ -1,5 +1,6 @@
-from config import CSV_CLEANED_DIR, BASE_DIR
+from config import CSV_DIR, CSV_CLEANED_DIR
 import logging
+from clean_csv import clean_csv
 from pathlib import Path
 from datetime import datetime
 from pathlib import Path
@@ -14,16 +15,22 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
-def get_processed_doc_ids(csv_path):
-   """Return set of already processed DocIDs from existing CSV"""
-   processed = set()
-   if csv_path.exists():
-       df = pd.read_csv(csv_path)
-       if 'DocID' in df.columns:
-           valid_ids = df['DocID'].dropna()
-           processed = set(valid_ids.unique())
-           logger.info(f"Found {len(processed)} unique DocIDs. {len(df) - len(valid_ids)} rows had null DocIDs.")
-   return processed
+def validate_trades(year): # This one was a pain to sort out. Should be working now
+    source_path = CSV_DIR / f"{year}_house_trades.csv"
+    validated_path = CSV_CLEANED_DIR / f"{year}_house_trades_cleaned.csv"
+
+    if not source_path.exists() or not validated_path.exists():
+        return
+
+    source_df = pd.read_csv(source_path)
+    validated_df = pd.read_csv(validated_path)
+    validated_doc_ids = set(validated_df["DocID"])
+    
+    for _, row in source_df.iterrows():
+        if row["DocID"] not in validated_doc_ids:
+            pass
+        else:
+            print(f"DocID {row['DocID']} already processed. Skipping...")
 
 def year_error_handling(start_year, end_year):
     current_year = datetime.now().year

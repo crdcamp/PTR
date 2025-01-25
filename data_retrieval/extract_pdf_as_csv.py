@@ -1,5 +1,5 @@
 from config import METADATA_DIR, PDF_DIR, CSV_DIR
-from utils import year_error_handling
+from utils import year_error_handling, validate_trades
 import os
 import pandas as pd
 from anthropic import Anthropic
@@ -63,9 +63,10 @@ def extract_pdf_as_csv(start_year, end_year):
     
     for year in range(start_year, end_year + 1):
         print(f"\nProcessing year {year}...")
-        
-        try:
+        validate_trades(year)
+        try:          
             name_lookup = load_metadata(year)
+
             pdf_year_dir = PDF_DIR / str(year)
             
             if not pdf_year_dir.exists():
