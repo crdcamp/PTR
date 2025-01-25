@@ -14,37 +14,8 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
-
 def validate_trades(year):
-    # Declare file paths
-    source_path = CSV_DIR / f"{year}_house_trades.csv"
-    validated_path = CSV_CLEANED_DIR / f"{year}_house_trades_cleaned.csv"
-
-    # Validate file paths
-    if not validated_path.exists() or not source_path.exists():
-        logger.warning(f"File path(s) not found")
-        return False
-    
-    try:
-        # Read source and validated CSVs
-        source_df = pd.read_csv(source_path)
-        validated_df = pd.read_csv(validated_path)
-
-        # Access the DocID column both CSVs
-        source_doc_ids = set(source_df["DocID"])
-        validated_doc_ids = set(validated_df["DocID"])
-
-        
-
-
-
-
-
-
-
-
-
-def validate_trades(year):
+    """Return set of already processed DocIDs for a given year"""
     source_path = CSV_DIR / f"{year}_house_trades.csv"
     validated_path = CSV_CLEANED_DIR / f"{year}_house_trades_cleaned.csv"
 
@@ -56,14 +27,8 @@ def validate_trades(year):
         validated_df = pd.read_csv(validated_path)
         source_df = pd.read_csv(source_path)
         
-        validated_doc_ids = set(validated_df["DocID"])
-        source_doc_ids = set(source_df["DocID"])
-        
-        already_processed = source_doc_ids.intersection(validated_doc_ids)
-        for doc_id in already_processed:
-            logger.warning(f"{doc_id} has already been processed. Skipping")
-            
-        return already_processed
+        # Return intersection of DocIDs between source and validated files
+        return set(source_df["DocID"]).intersection(set(validated_df["DocID"]))
         
     except Exception as e:
         logger.error(f"Error reading files: {e}")
