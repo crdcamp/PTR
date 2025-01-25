@@ -14,6 +14,16 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
+# Desperately need to clean this function up and ensure it's air tight
+# It's logging is a mess, and returning empty sets is just a terrible idea
+
+# Not even sure if it's actually working honestly.... gonna take some tedious testing and a bunch of work to find out
+
+"""
+After looking in to it, I think we have quite a mess on our hands with basically
+every update print statement and log. You'll have to do a deep dive into this.
+
+"""
 def validate_trades(year):
     """Return set of already processed DocIDs for a given year"""
     source_path = CSV_DIR / f"{year}_house_trades.csv"

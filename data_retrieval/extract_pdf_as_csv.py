@@ -82,7 +82,7 @@ def extract_pdf_as_csv(start_year, end_year):
        for pdf_file in progress_bar:
            docid = pdf_file.stem
            if docid in processed_ids:
-               progress_bar.write(f"Skipping {pdf_file.name} - already processed")
+               print(f"Skipping {pdf_file.name} - already processed")
                continue
 
            retry_attempts = 0
