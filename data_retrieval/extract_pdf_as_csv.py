@@ -10,12 +10,6 @@ from tqdm import tqdm
 
 load_dotenv()
 
-"""
-ADD LOGGING TO THE EXTRACTION FUNCTION
-I get the overwhelming sense there is a lot of unecessary
-crap in this file thanks to my ai associates
-"""
-
 EXTRACTION_PROMPT = """
 Extract every transaction from this Periodic Transaction Report into a CSV table. For each field in the output:
 1. Surround every field with double quotes, even numbers and dates
@@ -49,6 +43,21 @@ def antropic_api_setup():
     
     MODEL_NAME = "claude-3-5-sonnet-20241022"
 
+def load_metadata(year):
+    """Load and process metadata file for a given year"""
+    metadata_file = METADATA_DIR / f"{year}FD.csv"
+    if not metadata_file.exists():
+        raise FileNotFoundError(f"Metadata file for year {year} not found")
+    
+    # Create a lookup dictionary with DocID as key and politician name as value
+    metadata_df = pd.read_csv(metadata_file, delimiter="\t")
+    name_lookup = {}
+    for _, row in metadata_df.iterrows():
+        docid = str(row['DocID'])
+        name = f"{row['First']} {row['Last']}".strip()
+        name_lookup[docid] = name
+    return name_lookup
+
 def extract_pdf_as_csv(start_year, end_year):
     year_error_handling(start_year, end_year)
     antropic_api_setup()
@@ -63,21 +72,22 @@ def extract_pdf_as_csv(start_year, end_year):
         csv_filename = f"{year}_house_trades.csv"
         csv_headers = '"Politician","DocID","Asset","Transaction Type","Date","Notification Date","Amount"\n'
 
-        # This needs to be changed. Something about this print statement is... just gross
+        # This needs to be changed. Something about this print statement is just... gross
         if not pdf_path.exists():
-            print(f"Directory for year {year} does not exist. Skipping...")
+            print(f"Directory for year {year} does not found. Skipping...")
             continue
         
         """Set up progress bar"""
         progress_bar = tqdm(pdf_files, desc=f"Processing PDFs for {year}", unit="file")
         is_first_file = True
         
-        """Iterate through the files and use Antropic API calls to extract PDF as CSV"""
+        """Iterate through the files and use Antropic API calls to extract PDFs as CSV"""
         for pdf_file in progress_bar:
             processed_trades = check_if_processed(year)
+            name_lookup = load_metadata(year)
             docid = pdf_file.stem
-            if docid not in processed_trades:
 
+            if docid not in processed_trades:
                 retry_attempts = 0
                 success = False
                 while retry_attempts <= 2 and not success:
@@ -154,133 +164,3 @@ def extract_pdf_as_csv(start_year, end_year):
                 if not success:
                     progress_bar.write(f"Failed to process {pdf_file.name} after {retry_attempts} attempts")
                     print(f"Completed processing for year {year}. Output saved to {csv_filename}")
-
-
-
-
-
-
-def load_metadata(year):
-    """Load and process metadata file for a given year"""
-    metadata_file = METADATA_DIR / f"{year}FD.csv"
-    if not metadata_file.exists():
-        raise FileNotFoundError(f"Metadata file for year {year} not found")
-    
-    # Create a lookup dictionary with DocID as key and politician name as value
-    metadata_df = pd.read_csv(metadata_file, delimiter="\t")
-    name_lookup = {}
-    for _, row in metadata_df.iterrows():
-        docid = str(row['DocID'])
-        name = f"{row['First']} {row['Last']}".strip()
-        name_lookup[docid] = name
-    return name_lookup
-
-def extract_pdf_as_csv(start_year, end_year):
-   year_error_handling(start_year, end_year)
-   client = Anthropic(
-       api_key=ANTHROPIC_API_KEY,
-       default_headers={"anthropic-beta": "pdfs-2024-09-25"}
-   )
-   
-   MODEL_NAME = "claude-3-5-sonnet-20241022"
-   
-   for year in range(start_year, end_year + 1):
-       processed_trades = check_if_processed(year)
-       name_lookup = load_metadata(year)
-
-       pdf_path = PDF_DIR / str(year)
-       csv_path = CSV_DIR / csv_filename
-
-       csv_filename = f"{year}_house_trades.csv"
-
-       if not pdf_path.exists(): # THIS DEFINITELY NEEDS TO BE ADJUSTED
-           print(f"Directory for {year} not found. Skipping...")
-           continue
-
-       
-       is_first_file = True
-       csv_headers = '"Politician","DocID","Asset","Transaction Type","Date","Notification Date","Amount"\n'
-       
-       pdf_files = list(pdf_path.glob("*.pdf"))
-       progress_bar = tqdm(pdf_files, desc=f"Processing PDFs for {year}", unit="file")
-           
-       for pdf_file in progress_bar:
-           docid = pdf_file.stem
-           if docid not in processed_trades:
-
-            retry_attempts = 0
-            success = False
-            while retry_attempts <= 2 and not success:
-                try:
-                    politician_name = name_lookup.get(docid, "Unknown")
-                    
-                    with open(pdf_file, "rb") as f:
-                        binary_data = f.read()
-                        base64_string = base64.b64encode(binary_data).decode("utf-8")
-                    
-                    messages = [{
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "document",
-                                "source": {
-                                    "type": "base64",
-                                    "media_type": "application/pdf",
-                                    "data": base64_string
-                                }
-                            },
-                            {"type": "text", "text": EXTRACTION_PROMPT}
-                        ]
-                    }]
-                    
-                    response = client.messages.create(
-                        model=MODEL_NAME,
-                        max_tokens=8192,
-                        messages=messages
-                    )
-                    
-                    content = response.content[0].text
-                    if not content.strip() or not any(line.count(',') >= 4 for line in content.split('\n') if line.strip()):
-                        raise ValueError("Response validation failed: Invalid or empty content")
-                    
-                    if not is_first_file:
-                        content = '\n'.join(content.split('\n')[1:])
-                    
-                    modified_lines = []
-                    for line in content.split('\n'):
-                        if line.strip() and not line.startswith('"Asset",'):
-                            modified_lines.append(f'"{politician_name}","{docid}",{line}')
-                    
-                    if not modified_lines:
-                        raise ValueError("No valid data lines found in response")
-                    
-                    content_to_write = csv_headers if is_first_file else ''
-                    content_to_write += '\n'.join(modified_lines)
-                    
-                    with open(csv_path, 'w' if is_first_file else 'a', encoding="utf-8") as f:
-                        f.write(content_to_write + '\n')
-                    
-                    success = True
-                    is_first_file = False
-                    progress_bar.write(f"Successfully processed {pdf_file.name} on attempt {retry_attempts + 1}")
-
-                except Exception as e:
-                    error_message = str(e)
-                    retry_attempts += 1
-                    
-                    if "Error code: 429" in error_message and "rate_limit_error" in error_message:
-                        progress_bar.write(f"Rate limit error encountered on attempt {retry_attempts}. Waiting for 70 seconds...")
-                        time.sleep(70)
-                    elif "Error code: 500" in error_message:
-                        progress_bar.write(f"Internal server error for {pdf_file.name}, attempt {retry_attempts}...")
-                        if retry_attempts <= 2:
-                            time.sleep(5)
-                        else:
-                            progress_bar.write(f"Max retry attempts reached for {pdf_file.name}. Skipping.")
-                    else:
-                        progress_bar.write(f"Unrecoverable error for {pdf_file.name} on attempt {retry_attempts}: {error_message}")
-                        break
-            
-            if not success:
-                progress_bar.write(f"Failed to process {pdf_file.name} after {retry_attempts} attempts")
-                print(f"Completed processing for year {year}. Output saved to {csv_filename}")
