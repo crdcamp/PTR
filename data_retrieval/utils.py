@@ -14,14 +14,13 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
-"""
-Desperately need to clean this validation function up and ensure it's air tight
-It's logging is a mess, and returning empty sets is just a terrible idea
+""""
+Not even sure if it's actually working honestly.... gonna take some tedious 
+testing and a bunch of work to find out
 
-Not even sure if it's actually working honestly.... gonna take some tedious testing and a bunch of work to find out
-
-After looking in to it, I think we have quite a mess on our hands with basically
-every update print statement and log. You'll have to do a deep dive into this.
+After looking in to it, I think I have quite a mess on our hands with most
+print statements and loging (logging is especially messy). 
+I'll have to do a deep dive into this.
 
 """
 
@@ -50,7 +49,6 @@ def check_if_processed(year):
         validated_df = pd.read_csv(validated_path, header=0)
         source_df = pd.read_csv(source_path, header=0)
 
-        # Convert to sets of tuples for comparison
         validated_rows = set(map(tuple, validated_df.itertuples(index=False)))
         source_rows = set(map(tuple, source_df.itertuples(index=False)))
 
@@ -70,7 +68,7 @@ def year_error_handling(start_year, end_year):
     if not isinstance(start_year, int) or not isinstance(end_year, int):
         raise TypeError("Start and end years must be integers")
 
-    if start_year < 2015 or end_year > current_year:  # Metadata structure changes prior to 2015
+    if start_year < 2015 or end_year > current_year:  # Metadata structure changes prior to 2015, so we'll 
         raise ValueError(f"Years must be between 2015 and the current year ({current_year})")
 
 def handle_download(session: requests.Session, url: str, timeout: int = 30) -> Optional[bytes]:

@@ -50,19 +50,16 @@ def download_ptr_pdfs(start_year, end_year):
 
     with requests.Session() as session:
         for metadata_file in METADATA_DIR.iterdir():
-            # Skip files that don't match the expected pattern
-            if "FD" not in metadata_file.name or not metadata_file.name.endswith(".csv"):
-                continue
-
             # Extract year from file name
+            # SHOULD PROBABLY ADD ERROR HANDLING HERE. IF NOT HERE, MAKE A FUNCTION utils.py TO TAKE CARE OF IT
             try:
                 year = int(metadata_file.stem[:-2])
             except ValueError:
                 print(f"Skipping file with unexpected name format: {metadata_file.name}")
                 continue
 
-            year_dir = PDF_DIR / str(year)
-            year_dir.mkdir(parents=True, exist_ok=True)
+            pdf_year_path = PDF_DIR / str(year)
+            pdf_year_path.mkdir(parents=True, exist_ok=True)
 
             df = safe_read_csv(metadata_file, sep="\t")
             if df is None:
@@ -70,7 +67,7 @@ def download_ptr_pdfs(start_year, end_year):
 
             for url in df["URL"]:
                 filename = url.split("/")[-1]
-                filepath = year_dir / filename
+                filepath = pdf_year_path / filename
 
                 # Skip if file already exists
                 if filepath.exists():
@@ -84,6 +81,6 @@ def download_ptr_pdfs(start_year, end_year):
                 try:
                     with open(filepath, "wb") as f:
                         f.write(content)
-                    print(f"Downloaded PDF: {filename} to {year_dir}")
+                    print(f"Downloaded PDF: {filename} to {pdf_year_path}")
                 except Exception as e:
                     print(f"Error saving PDF: {url} - {e}")
