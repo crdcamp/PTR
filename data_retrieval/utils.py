@@ -25,9 +25,8 @@ every update print statement and log. You'll have to do a deep dive into this.
 
 """
 
-
 def check_if_processed(year):
-    """Return set of already processed DocIDs for a given year"""
+    """Return set of already processed rows for a given year"""
     validated_path = CSV_CLEANED_DIR / f"{year}_house_trades_cleaned.csv"
     source_path = CSV_DIR / f"{year}_house_trades.csv"
 
@@ -49,14 +48,16 @@ def check_if_processed(year):
             return result
 
         validated_df = pd.read_csv(validated_path, header=0)
-        validated_ids = set(validated_df["DocID"])
-
         source_df = pd.read_csv(source_path, header=0)
-        source_ids = set(source_df["DocID"])
 
-        processed_ids = validated_ids.intersection(source_ids)
+        # Convert to sets of tuples for comparison
+        validated_rows = set(map(tuple, validated_df.itertuples(index=False)))
+        source_rows = set(map(tuple, source_df.itertuples(index=False)))
+
+        processed_rows = validated_rows.intersection(source_rows)
+
         result["status"] = "success"
-        return {"status": "success", "processed_ids": processed_ids}
+        return {"status": "success", "processed_rows": processed_rows}
         
     except Exception as e:
         result["message"] = f"Error processing files: {str(e)}"
