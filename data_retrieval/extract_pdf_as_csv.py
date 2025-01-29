@@ -11,7 +11,7 @@ from tqdm import tqdm
 load_dotenv()
 
 """
-CLEAN THIS MESS UP WHEN check_if_processed is working!!!
+CLEAN THIS MESS UP WHEN check_if_processed IS WORKING!!!
 
 I get the overwheling sense there is a lot of unecessary
 crap in this file thanks to my ai associates
