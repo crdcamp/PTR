@@ -14,35 +14,54 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
-# Desperately need to clean this function up and ensure it's air tight
-# It's logging is a mess, and returning empty sets is just a terrible idea
-
-# Not even sure if it's actually working honestly.... gonna take some tedious testing and a bunch of work to find out
-
 """
+Desperately need to clean this validation function up and ensure it's air tight
+It's logging is a mess, and returning empty sets is just a terrible idea
+
+Not even sure if it's actually working honestly.... gonna take some tedious testing and a bunch of work to find out
+
 After looking in to it, I think we have quite a mess on our hands with basically
 every update print statement and log. You'll have to do a deep dive into this.
 
 """
-def validate_trades(year):
-    """Return set of already processed DocIDs for a given year"""
-    source_path = CSV_DIR / f"{year}_house_trades.csv"
-    validated_path = CSV_CLEANED_DIR / f"{year}_house_trades_cleaned.csv"
 
-    if not validated_path.exists() or not source_path.exists():
-        logger.warning(f"Cannot find file path(s) for {year}")
-        return set()
+
+def check_if_processed(year):
+    """Return set of already processed DocIDs for a given year"""
+    validated_path = CSV_CLEANED_DIR / f"{year}_house_trades_cleaned.csv"
+    source_path = CSV_DIR / f"{year}_house_trades.csv"
+
+    result = {
+        "status": "error",
+        "message": "",
+        "discrepancies": []
+    }
 
     try:
-        validated_df = pd.read_csv(validated_path)
-        source_df = pd.read_csv(source_path)
-        
-        # Return intersection of DocIDs between source and validated files
-        return set(source_df["DocID"]).intersection(set(validated_df["DocID"]))
+        if not validated_path.exists():
+            result["message"] = f"Validated file path not found: {validated_path}"
+            logger.error(result["message"])
+            return result
+
+        if not source_path.exists():
+            result["message"] = f"Source file path not found: {source_path}"
+            logger.error(result["message"])
+            return result
+
+        validated_df = pd.read_csv(validated_path, header=0)
+        validated_ids = set(validated_df["DocID"])
+
+        source_df = pd.read_csv(source_path, header=0)
+        source_ids = set(source_df["DocID"])
+
+        processed_ids = validated_ids.intersection(source_ids)
+        result["status"] = "success"
+        return {"status": "success", "processed_ids": processed_ids}
         
     except Exception as e:
-        logger.error(f"Error reading files: {e}")
-        return set()
+        result["message"] = f"Error processing files: {str(e)}"
+        logger.error(result["message"])
+        return result
 
 def year_error_handling(start_year, end_year):
     current_year = datetime.now().year
