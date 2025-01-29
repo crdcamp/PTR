@@ -1,20 +1,31 @@
 from config import METADATA_DIR, PDF_DIR, CSV_DIR, CSV_CLEANED_DIR
 from utils import year_error_handling
 import os
-import logging
 import pandas as pd
 from anthropic import Anthropic
 import base64
 from dotenv import load_dotenv
 import time
 from tqdm import tqdm
+import logging
+
+# Set up logging to both file and console
+logging.basicConfig(
+    level=logging.DEBUG,  # Set the minimum level of messages to show
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('processing.log'),  # Save to a file
+        logging.StreamHandler()  # Show in console
+    ]
+)
+
+logger = logging.getLogger(__name__)
 
 # I HATE TO SAY IT.... BUT YOU MIGHT NEED TO CHECK THE TRADES USING DOCID INSTEAD
 
 # VERY IMPORTANT!!!!!! ADJUST THE EXTRACTION FUNCTION SO IT DOESN'T OVERWRITE THE CSV FILES
 
 load_dotenv()
-logger = logging.getLogger(__name__)
 
 ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY')
 if not ANTHROPIC_API_KEY:

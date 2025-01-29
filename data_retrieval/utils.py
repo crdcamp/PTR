@@ -12,8 +12,6 @@ import pandas as pd
 # Will need to check later if this error handling actually holds up
 # Probably should add logging to all (if not most) of these...
 
-logger = logging.getLogger(__name__)
-
 """"
 Not even sure if it's actually working honestly.... gonna take some tedious 
 testing and a bunch of work to find out
