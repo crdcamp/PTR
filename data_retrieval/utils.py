@@ -24,44 +24,6 @@ I'll have to do a deep dive into this.
 
 """
 
-def check_if_processed(year):
-    """Return set of already processed rows for a given year"""
-    validated_path = CSV_CLEANED_DIR / f"{year}_house_trades_cleaned.csv"
-    source_path = CSV_DIR / f"{year}_house_trades.csv"
-
-    result = {
-        "status": "error",
-        "message": "",
-        "discrepancies": []
-    }
-
-    try:
-        if not validated_path.exists():
-            result["message"] = f"Validated file path not found: {validated_path}"
-            logger.error(result["message"])
-            return result
-
-        if not source_path.exists():
-            result["message"] = f"Source file path not found: {source_path}"
-            logger.error(result["message"])
-            return result
-
-        validated_df = pd.read_csv(validated_path, header=0)
-        source_df = pd.read_csv(source_path, header=0)
-
-        validated_rows = set(map(tuple, validated_df.itertuples(index=False)))
-        source_rows = set(map(tuple, source_df.itertuples(index=False)))
-
-        processed_rows = validated_rows.intersection(source_rows)
-
-        result["status"] = "success"
-        return {"status": "success", "processed_rows": processed_rows}
-        
-    except Exception as e:
-        result["message"] = f"Error processing files: {str(e)}"
-        logger.error(result["message"])
-        return result
-
 def year_error_handling(start_year, end_year):
     current_year = datetime.now().year
 

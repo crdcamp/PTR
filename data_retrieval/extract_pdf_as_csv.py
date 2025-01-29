@@ -1,6 +1,7 @@
-from config import METADATA_DIR, PDF_DIR, CSV_DIR
-from utils import year_error_handling, check_if_processed
+from config import METADATA_DIR, PDF_DIR, CSV_DIR, CSV_CLEANED_DIR
+from utils import year_error_handling
 import os
+import logging
 import pandas as pd
 from anthropic import Anthropic
 import base64
@@ -8,9 +9,12 @@ from dotenv import load_dotenv
 import time
 from tqdm import tqdm
 
-# VERY IMPORTANT!!!!!!: ADJUST THE EXTRACTION FUNCTION SO IT DOESN'T OVERWRITE THE CSV FILES
+# I HATE TO SAY IT.... BUT YOU MIGHT NEED TO CHECK THE TRADES USING DOCID INSTEAD
+
+# VERY IMPORTANT!!!!!! ADJUST THE EXTRACTION FUNCTION SO IT DOESN'T OVERWRITE THE CSV FILES
 
 load_dotenv()
+logger = logging.getLogger(__name__)
 
 ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY')
 if not ANTHROPIC_API_KEY:
@@ -53,6 +57,44 @@ def antropic_api_setup():
        api_key=ANTHROPIC_API_KEY,
        default_headers={"anthropic-beta": "pdfs-2024-09-25"}
     )
+
+def check_if_processed(year):
+    """Return set of already processed rows for a given year"""
+    validated_path = CSV_CLEANED_DIR / f"{year}_house_trades_cleaned.csv"
+    source_path = CSV_DIR / f"{year}_house_trades.csv"
+
+    result = {
+        "status": "error",
+        "message": "",
+        "discrepancies": []
+    }
+
+    try: # THESE WILL STOP THE SCTIPT. WE DON'T WANT THAT!!!!
+        if not validated_path.exists():
+            result["message"] = f"Validated file path not found: {validated_path}"
+            logger.error(result["message"])
+            return result
+
+        if not source_path.exists():
+            result["message"] = f"Source file path not found: {source_path}"
+            logger.error(result["message"])
+            return result
+
+        validated_df = pd.read_csv(validated_path, header=0)
+        source_df = pd.read_csv(source_path, header=0)
+
+        validated_rows = set(map(tuple, validated_df.itertuples(index=False)))
+        source_rows = set(map(tuple, source_df.itertuples(index=False)))
+
+        processed_rows = validated_rows.intersection(source_rows)
+
+        result["status"] = "success"
+        return {"status": "success", "processed_rows": processed_rows}
+        
+    except Exception as e:
+        result["message"] = f"Error processing files: {str(e)}"
+        logger.error(result["message"])
+        return result
 
 def load_metadata(year):
     """Load and process metadata file for a given year to match DocID with politician names"""
@@ -99,7 +141,39 @@ def extract_pdf_as_csv(start_year, end_year):
         
         """Set up progress bar"""
         progress_bar = tqdm(pdf_files, desc=f"Processing PDFs for {year}", unit="file")
-        
+
+        # Check if we have any processed trades to compare against
+        if processed_trades["status"] == "success":
+            processed_rows = processed_trades["processed_rows"]
+            logger.info(f"Found {len(processed_rows)} previously processed trades for {year}")
+        else:
+            processed_rows = set()
+            logger.warning(f"No previously processed trades found for {year}")
+
+        # If the CSV exists, we'll read it to check for duplicates
+        if csv_path.exists():
+            logger.info(f"Found existing CSV file: {csv_path}")
+            existing_df = pd.read_csv(csv_path)
+            existing_rows = set(map(tuple, existing_df.itertuples(index=False)))
+            logger.info(f"Found {len(existing_rows)} existing rows in CSV for {year}")
+            
+            # Filter out any PDF files that have already been processed
+            unprocessed_files = []
+            for pdf_file in pdf_files:
+                if any(pdf_file.stem in str(row) for row in processed_rows.union(existing_rows)):
+                    logger.debug(f"Skipping already processed file: {pdf_file.name}")
+                else:
+                    unprocessed_files.append(pdf_file)
+                    logger.debug(f"Adding unprocessed file to queue: {pdf_file.name}")
+            
+            logger.info(f"Found {len(unprocessed_files)} unprocessed files out of {len(pdf_files)} total files for {year}")
+            progress_bar = tqdm(unprocessed_files, desc=f"Processing PDFs for {year}", unit="file")
+        else:
+            logger.info(f"No existing CSV file found at {csv_path}. Will process all PDF files.")
+            unprocessed_files = pdf_files
+
+        progress_bar = tqdm(unprocessed_files, desc=f"Processing PDFs for {year}", unit="file")
+
         """Iterate through the files and use Antropic API calls to extract PDFs as CSV"""
         for pdf_file in progress_bar:
             docid = pdf_file.stem
