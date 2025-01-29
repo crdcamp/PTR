@@ -8,7 +8,20 @@ from dotenv import load_dotenv
 import time
 from tqdm import tqdm
 
+# VERY IMPORTANT!!!!!!: ADJUST THE EXTRACTION FUNCTION SO IT DOESN'T OVERWRITE THE CSV FILES
+
 load_dotenv()
+
+ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY')
+if not ANTHROPIC_API_KEY:
+    raise ValueError("ANTHROPIC_API_KEY environment variable is not set")
+
+MODEL_NAME = "claude-3-5-sonnet-20241022"
+MAX_TOKENS = 8192
+RETRY_ATTEMPTS = 2
+RATE_LIMIT_WAIT = 70
+SERVER_ERROR_WAIT = 5
+client = None
 
 EXTRACTION_PROMPT = """
 Extract every transaction from this Periodic Transaction Report into a CSV table. For each field in the output:
@@ -32,22 +45,20 @@ Output example format:
 """
 
 def antropic_api_setup():
-    ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY')
+    global client
     if not ANTHROPIC_API_KEY:
         raise ValueError("ANTHROPIC_API_KEY environment variable is not set")
 
     client = Anthropic(
        api_key=ANTHROPIC_API_KEY,
        default_headers={"anthropic-beta": "pdfs-2024-09-25"}
-   )
-    
-    MODEL_NAME = "claude-3-5-sonnet-20241022"
+    )
 
 def load_metadata(year):
-    """Load and process metadata file for a given year"""
+    """Load and process metadata file for a given year to match DocID with politician names"""
     metadata_file = METADATA_DIR / f"{year}FD.csv"
     if not metadata_file.exists():
-        raise FileNotFoundError(f"Metadata file for year {year} not found")
+        raise FileNotFoundError(f"Metadata file for year {year} not found") # Make this better. Horrendous error handling.
     
     # Create a lookup dictionary with DocID as key and politician name as value
     metadata_df = pd.read_csv(metadata_file, delimiter="\t")
@@ -63,14 +74,23 @@ def extract_pdf_as_csv(start_year, end_year):
     antropic_api_setup()
 
     for year in range(start_year, end_year + 1):
+        processed_trades = check_if_processed(year)
+        name_lookup = load_metadata(year)
+
         """Set up PDF paths and files"""
         pdf_path = PDF_DIR / str(year)
         pdf_files = list(pdf_path.glob("*.pdf"))
         
         """Set up CSV paths and files"""
-        csv_path = CSV_DIR / csv_filename
         csv_filename = f"{year}_house_trades.csv"
+        csv_path = CSV_DIR / csv_filename
         csv_headers = '"Politician","DocID","Asset","Transaction Type","Date","Notification Date","Amount"\n'
+
+        # Initialize CSV if it doesn't exist
+        is_first_file = not csv_path.exists()
+        if is_first_file:
+            with open(csv_path, 'w', encoding="utf-8") as f:
+                f.write(csv_headers)
 
         # This needs to be changed. Something about this print statement is just... gross
         if not pdf_path.exists():
@@ -79,12 +99,9 @@ def extract_pdf_as_csv(start_year, end_year):
         
         """Set up progress bar"""
         progress_bar = tqdm(pdf_files, desc=f"Processing PDFs for {year}", unit="file")
-        is_first_file = True
         
         """Iterate through the files and use Antropic API calls to extract PDFs as CSV"""
         for pdf_file in progress_bar:
-            processed_trades = check_if_processed(year)
-            name_lookup = load_metadata(year)
             docid = pdf_file.stem
 
             if docid not in processed_trades:
@@ -115,7 +132,7 @@ def extract_pdf_as_csv(start_year, end_year):
                         
                         response = client.messages.create(
                             model=MODEL_NAME,
-                            max_tokens=8192,
+                            max_tokens=MAX_TOKENS,
                             messages=messages
                         )
                         
@@ -134,11 +151,8 @@ def extract_pdf_as_csv(start_year, end_year):
                         if not modified_lines:
                             raise ValueError("No valid data lines found in response")
                         
-                        content_to_write = csv_headers if is_first_file else ''
-                        content_to_write += '\n'.join(modified_lines)
-                        
-                        with open(csv_path, 'w' if is_first_file else 'a', encoding="utf-8") as f:
-                            f.write(content_to_write + '\n')
+                        with open(csv_path, 'a', encoding="utf-8") as f:
+                            f.write('\n'.join(modified_lines) + '\n')
                         
                         success = True
                         is_first_file = False
@@ -149,12 +163,12 @@ def extract_pdf_as_csv(start_year, end_year):
                         retry_attempts += 1
                         
                         if "Error code: 429" in error_message and "rate_limit_error" in error_message:
-                            progress_bar.write(f"Rate limit error encountered on attempt {retry_attempts}. Waiting for 70 seconds...")
-                            time.sleep(70)
+                            progress_bar.write(f"Rate limit error encountered on attempt {retry_attempts}. Waiting for {RATE_LIMIT_WAIT} seconds...")
+                            time.sleep(RATE_LIMIT_WAIT)
                         elif "Error code: 500" in error_message:
                             progress_bar.write(f"Internal server error for {pdf_file.name}, attempt {retry_attempts}...")
-                            if retry_attempts <= 2:
-                                time.sleep(5)
+                            if retry_attempts <= RETRY_ATTEMPTS:
+                                time.sleep(SERVER_ERROR_WAIT)
                             else:
                                 progress_bar.write(f"Max retry attempts reached for {pdf_file.name}. Skipping.")
                         else:
