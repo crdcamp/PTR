@@ -3,7 +3,7 @@ from extract_pdf_as_csv import extract_pdf_as_csv
 from clean_csv import clean_csv
 
 """
-- Need to add State/District to the set
+- Need to add State/District to the data set
 
 """
 

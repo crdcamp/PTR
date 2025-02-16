@@ -1,5 +1,5 @@
 CREATE TABLE house_data (
-   politician VARCHAR(50),
+   politician_name VARCHAR(50),
    doc_id VARCHAR (10),
    transaction_type VARCHAR(20),
    transaction_date DATE,
