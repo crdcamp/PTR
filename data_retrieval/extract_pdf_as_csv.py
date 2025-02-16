@@ -9,27 +9,25 @@ import time
 from tqdm import tqdm
 import logging
 
+# THESE LOGS NEED TO BE CLEANED UP!!!!!!!!!!
+
 # Set up logging to both file and console
 logging.basicConfig(
-    level=logging.DEBUG,  # Set the minimum level of messages to show
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('processing.log'),  # Save to a file
-        logging.StreamHandler()  # Show in console
-    ]
+   level=logging.INFO,
+   format='%(levelname)s - %(message)s',
+   handlers=[
+       logging.FileHandler('processing.log'),
+       logging.StreamHandler()
+   ]
 )
 
 logger = logging.getLogger(__name__)
-
-# I HATE TO SAY IT.... BUT YOU MIGHT NEED TO CHECK THE TRADES USING DOCID INSTEAD
-
-# VERY IMPORTANT!!!!!! ADJUST THE EXTRACTION FUNCTION SO IT DOESN'T OVERWRITE THE CSV FILES
 
 load_dotenv()
 
 ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY')
 if not ANTHROPIC_API_KEY:
-    raise ValueError("ANTHROPIC_API_KEY environment variable is not set")
+   raise ValueError("ANTHROPIC_API_KEY environment variable is not set")
 
 MODEL_NAME = "claude-3-5-sonnet-20241022"
 MAX_TOKENS = 8192
@@ -60,206 +58,213 @@ Output example format:
 """
 
 def antropic_api_setup():
-    global client
-    if not ANTHROPIC_API_KEY:
-        raise ValueError("ANTHROPIC_API_KEY environment variable is not set")
+   global client
+   if not ANTHROPIC_API_KEY:
+       raise ValueError("ANTHROPIC_API_KEY environment variable is not set")
 
-    client = Anthropic(
-       api_key=ANTHROPIC_API_KEY,
-       default_headers={"anthropic-beta": "pdfs-2024-09-25"}
-    )
+   client = Anthropic(
+      api_key=ANTHROPIC_API_KEY,
+      default_headers={"anthropic-beta": "pdfs-2024-09-25"}
+   )
 
 def check_if_processed(year):
-    """Return set of already processed rows for a given year"""
-    validated_path = CSV_CLEANED_DIR / f"{year}_house_trades_cleaned.csv"
-    source_path = CSV_DIR / f"{year}_house_trades.csv"
+   """Return set of already processed DocIDs for a given year"""
+   validated_path = CSV_CLEANED_DIR / f"{year}_house_trades_cleaned.csv"
+   source_path = CSV_DIR / f"{year}_house_trades.csv"
 
-    result = {
-        "status": "error",
-        "message": "",
-        "discrepancies": []
-    }
+   result = {
+       "status": "error",
+       "message": "",
+       "discrepancies": []
+   }
 
-    try: # THESE WILL STOP THE SCTIPT. WE DON'T WANT THAT!!!!
-        if not validated_path.exists():
-            result["message"] = f"Validated file path not found: {validated_path}"
-            logger.error(result["message"])
-            return result
+   try:
+       if not validated_path.exists():
+           result["message"] = f"Validated file path not found: {validated_path}"
+           logger.error(result["message"])
+           return result
 
-        if not source_path.exists():
-            result["message"] = f"Source file path not found: {source_path}"
-            logger.error(result["message"])
-            return result
+       if not source_path.exists():
+           result["message"] = f"Source file path not found: {source_path}"
+           logger.error(result["message"])
+           return result
 
-        validated_df = pd.read_csv(validated_path, header=0)
-        source_df = pd.read_csv(source_path, header=0)
+       validated_df = pd.read_csv(validated_path, header=0)
+       source_df = pd.read_csv(source_path, header=0)
 
-        validated_rows = set(map(tuple, validated_df.itertuples(index=False)))
-        source_rows = set(map(tuple, source_df.itertuples(index=False)))
+       # Convert DocIDs to strings for consistent comparison
+       validated_ids = set(validated_df["DocID"].astype(str))
+       source_ids = set(source_df["DocID"].astype(str))
 
-        processed_rows = validated_rows.intersection(source_rows)
+       processed_docids = validated_ids.intersection(source_ids)
 
-        result["status"] = "success"
-        return {"status": "success", "processed_rows": processed_rows}
-        
-    except Exception as e:
-        result["message"] = f"Error processing files: {str(e)}"
-        logger.error(result["message"])
-        return result
+       result["status"] = "success"
+       return {"status": "success", "processed_docids": processed_docids}
+       
+   except Exception as e:
+       result["message"] = f"Error processing files: {str(e)}"
+       logger.error(result["message"])
+       return result
 
 def load_metadata(year):
-    """Load and process metadata file for a given year to match DocID with politician names"""
-    metadata_file = METADATA_DIR / f"{year}FD.csv"
-    if not metadata_file.exists():
-        raise FileNotFoundError(f"Metadata file for year {year} not found") # Make this better. Horrendous error handling.
-    
-    # Create a lookup dictionary with DocID as key and politician name as value
-    metadata_df = pd.read_csv(metadata_file, delimiter="\t")
-    name_lookup = {}
-    for _, row in metadata_df.iterrows():
-        docid = str(row['DocID'])
-        name = f"{row['First']} {row['Last']}".strip()
-        name_lookup[docid] = name
-    return name_lookup
+   """Load and process metadata file for a given year to match DocID with politician names"""
+   metadata_file = METADATA_DIR / f"{year}FD.csv"
+   try:
+       if not metadata_file.exists():
+           logger.error(f"Metadata file not found: {metadata_file}")
+           return {}
+       
+       metadata_df = pd.read_csv(metadata_file, delimiter="\t")
+       name_lookup = {
+           str(row['DocID']): f"{row['First']} {row['Last']}".strip()
+           for _, row in metadata_df.iterrows()
+       }
+       return name_lookup
+       
+   except Exception as e:
+       logger.error(f"Error loading metadata: {str(e)}")
+       return {}
 
 def extract_pdf_as_csv(start_year, end_year):
     year_error_handling(start_year, end_year)
     antropic_api_setup()
 
     for year in range(start_year, end_year + 1):
+        logger.info(f"Processing year {year}")
         processed_trades = check_if_processed(year)
         name_lookup = load_metadata(year)
 
-        """Set up PDF paths and files"""
+        # Track files processed in this run
+        processed_in_this_run = set()
+        failed_files = []
+
+        """Set up paths and files"""
         pdf_path = PDF_DIR / str(year)
+        if not pdf_path.exists():
+            logger.warning(f"Directory for year {year} not found. Skipping...")
+            continue
+
         pdf_files = list(pdf_path.glob("*.pdf"))
         
-        """Set up CSV paths and files"""
         csv_filename = f"{year}_house_trades.csv"
         csv_path = CSV_DIR / csv_filename
         csv_headers = '"Politician","DocID","Asset","Transaction Type","Date","Notification Date","Amount"\n'
 
         # Initialize CSV if it doesn't exist
-        is_first_file = not csv_path.exists()
-        if is_first_file:
+        needs_header = not csv_path.exists()
+        if needs_header:
             with open(csv_path, 'w', encoding="utf-8") as f:
                 f.write(csv_headers)
 
-        # This needs to be changed. Something about this print statement is just... gross
-        if not pdf_path.exists():
-            print(f"Directory for year {year} does not found. Skipping...")
-            continue
-        
-        """Set up progress bar"""
-        progress_bar = tqdm(pdf_files, desc=f"Processing PDFs for {year}", unit="file")
-
-        # Check if we have any processed trades to compare against
+        # Get processed DocIDs
         if processed_trades["status"] == "success":
-            processed_rows = processed_trades["processed_rows"]
-            logger.info(f"Found {len(processed_rows)} previously processed trades for {year}")
+            processed_docids = processed_trades["processed_docids"]
+            logger.info(f"Found {len(processed_docids)} previously processed DocIDs")
         else:
-            processed_rows = set()
-            logger.warning(f"No previously processed trades found for {year}")
+            processed_docids = set()
+            logger.warning("No previously processed DocIDs found")
 
-        # If the CSV exists, we'll read it to check for duplicates
+        # Check existing CSV for DocIDs
+        existing_docids = set()
         if csv_path.exists():
-            logger.info(f"Found existing CSV file: {csv_path}")
             existing_df = pd.read_csv(csv_path)
-            existing_rows = set(map(tuple, existing_df.itertuples(index=False)))
-            logger.info(f"Found {len(existing_rows)} existing rows in CSV for {year}")
-            
-            # Filter out any PDF files that have already been processed
-            unprocessed_files = []
-            for pdf_file in pdf_files:
-                if any(pdf_file.stem in str(row) for row in processed_rows.union(existing_rows)):
-                    logger.debug(f"Skipping already processed file: {pdf_file.name}")
-                else:
-                    unprocessed_files.append(pdf_file)
-                    logger.debug(f"Adding unprocessed file to queue: {pdf_file.name}")
-            
-            logger.info(f"Found {len(unprocessed_files)} unprocessed files out of {len(pdf_files)} total files for {year}")
-            progress_bar = tqdm(unprocessed_files, desc=f"Processing PDFs for {year}", unit="file")
-        else:
-            logger.info(f"No existing CSV file found at {csv_path}. Will process all PDF files.")
-            unprocessed_files = pdf_files
+            existing_docids = set(existing_df['DocID'].astype(str).str.strip())
+            logger.info(f"Found {len(existing_docids)} existing DocIDs in CSV")
 
+        # Filter unprocessed files
+        all_processed_ids = processed_docids.union(existing_docids)
+        unprocessed_files = [
+            pdf_file for pdf_file in pdf_files 
+            if pdf_file.stem.strip() not in all_processed_ids
+        ]
+        
+        logger.info(f"Found {len(unprocessed_files)} files to process")
         progress_bar = tqdm(unprocessed_files, desc=f"Processing PDFs for {year}", unit="file")
 
-        """Iterate through the files and use Antropic API calls to extract PDFs as CSV"""
+        """Process PDFs"""
         for pdf_file in progress_bar:
-            docid = pdf_file.stem
+            docid = pdf_file.stem.strip()
 
-            if docid not in processed_trades:
-                retry_attempts = 0
-                success = False
-                while retry_attempts <= 2 and not success:
-                    try:
-                        politician_name = name_lookup.get(docid, "Unknown")
-                        
-                        with open(pdf_file, "rb") as f:
-                            binary_data = f.read()
-                            base64_string = base64.b64encode(binary_data).decode("utf-8")
-                        
-                        messages = [{
-                            "role": "user",
-                            "content": [
-                                {
-                                    "type": "document",
-                                    "source": {
-                                        "type": "base64",
-                                        "media_type": "application/pdf",
-                                        "data": base64_string
-                                    }
-                                },
-                                {"type": "text", "text": EXTRACTION_PROMPT}
-                            ]
-                        }]
-                        
-                        response = client.messages.create(
-                            model=MODEL_NAME,
-                            max_tokens=MAX_TOKENS,
-                            messages=messages
-                        )
-                        
-                        content = response.content[0].text
-                        if not content.strip() or not any(line.count(',') >= 4 for line in content.split('\n') if line.strip()):
-                            raise ValueError("Response validation failed: Invalid or empty content")
-                        
-                        if not is_first_file:
-                            content = '\n'.join(content.split('\n')[1:])
-                        
-                        modified_lines = []
-                        for line in content.split('\n'):
-                            if line.strip() and not line.startswith('"Asset",'):
-                                modified_lines.append(f'"{politician_name}","{docid}",{line}')
-                        
-                        if not modified_lines:
-                            raise ValueError("No valid data lines found in response")
-                        
-                        with open(csv_path, 'a', encoding="utf-8") as f:
-                            f.write('\n'.join(modified_lines) + '\n')
-                        
-                        success = True
-                        is_first_file = False
-                        progress_bar.write(f"Successfully processed {pdf_file.name} on attempt {retry_attempts + 1}")
+            # Skip if processed in this run or previously
+            if docid in processed_in_this_run or docid in all_processed_ids:
+                continue
 
-                    except Exception as e:
-                        error_message = str(e)
-                        retry_attempts += 1
-                        
-                        if "Error code: 429" in error_message and "rate_limit_error" in error_message:
-                            progress_bar.write(f"Rate limit error encountered on attempt {retry_attempts}. Waiting for {RATE_LIMIT_WAIT} seconds...")
-                            time.sleep(RATE_LIMIT_WAIT)
-                        elif "Error code: 500" in error_message:
-                            progress_bar.write(f"Internal server error for {pdf_file.name}, attempt {retry_attempts}...")
-                            if retry_attempts <= RETRY_ATTEMPTS:
-                                time.sleep(SERVER_ERROR_WAIT)
-                            else:
-                                progress_bar.write(f"Max retry attempts reached for {pdf_file.name}. Skipping.")
+            retry_attempts = 0
+            success = False
+            while retry_attempts <= RETRY_ATTEMPTS and not success:
+                try:
+                    politician_name = name_lookup.get(docid, "Unknown")
+                    
+                    with open(pdf_file, "rb") as f:
+                        binary_data = f.read()
+                        base64_string = base64.b64encode(binary_data).decode("utf-8")
+                    
+                    messages = [{
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "document",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": "application/pdf",
+                                    "data": base64_string
+                                }
+                            },
+                            {"type": "text", "text": EXTRACTION_PROMPT}
+                        ]
+                    }]
+                    
+                    response = client.messages.create(
+                        model=MODEL_NAME,
+                        max_tokens=MAX_TOKENS,
+                        messages=messages
+                    )
+                    
+                    content = response.content[0].text
+                    if not content.strip() or not any(line.count(',') >= 4 for line in content.split('\n') if line.strip()):
+                        raise ValueError("Response validation failed: Invalid or empty content")
+                    
+                    # Skip header line except for first file
+                    content_lines = content.split('\n')
+                    data_lines = [line for line in content_lines if line.strip() and not line.startswith('"Asset",')]
+                    
+                    modified_lines = [f'"{politician_name}","{docid}",{line}' for line in data_lines]
+                    
+                    if not modified_lines:
+                        raise ValueError("No valid data lines found in response")
+                    
+                    with open(csv_path, 'a', encoding="utf-8") as f:
+                        f.write('\n'.join(modified_lines) + '\n')
+                    
+                    success = True
+                    processed_in_this_run.add(docid)
+                    progress_bar.write(f"Successfully processed {pdf_file.name}")
+
+                except Exception as e:
+                    error_message = str(e)
+                    retry_attempts += 1
+                    logger.error(f"Error processing {pdf_file.name}: {error_message}")
+                    
+                    if "Error code: 429" in error_message and "rate_limit_error" in error_message:
+                        logger.warning(f"Rate limit hit - waiting {RATE_LIMIT_WAIT} seconds")
+                        time.sleep(RATE_LIMIT_WAIT)
+                    elif "Error code: 500" in error_message:
+                        if retry_attempts <= RETRY_ATTEMPTS:
+                            logger.warning(f"Server error - waiting {SERVER_ERROR_WAIT} seconds")
+                            time.sleep(SERVER_ERROR_WAIT)
                         else:
-                            progress_bar.write(f"Unrecoverable error for {pdf_file.name} on attempt {retry_attempts}: {error_message}")
-                            break
-                
-                if not success:
-                    progress_bar.write(f"Failed to process {pdf_file.name} after {retry_attempts} attempts")
-                    print(f"Completed processing for year {year}. Output saved to {csv_filename}")
+                            logger.error(f"Max retries reached for {pdf_file.name}")
+                    else:
+                        logger.error(f"Unrecoverable error for {pdf_file.name}")
+                        break
+            
+            if not success:
+                logger.error(f"Failed to process {pdf_file.name} after {retry_attempts} attempts")
+                failed_files.append(pdf_file.name)
+
+        # End of year summary
+        logger.info(f"Completed year {year}")
+        logger.info(f"Successfully processed {len(processed_in_this_run)} new files")
+        if failed_files:
+            logger.warning(f"Failed to process {len(failed_files)} files: {', '.join(failed_files)}")
+        logger.info(f"Output saved to {csv_filename}")

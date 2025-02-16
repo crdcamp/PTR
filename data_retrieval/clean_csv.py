@@ -1,15 +1,28 @@
 from config import CSV_DIR, CSV_CLEANED_DIR
 import pandas as pd
 
-# SHOULD ADD A LOG FOR WHEN LINES ARE SKIPPED WHEN READING CSV
+# TO DO:
+"""
+- Should add a log for when lines are skipped when reading CSV
+- Need to add a function that deletes lines that do not have 7 columns
+- Need to sort by publish date before saving CSVs
+
+"""
 
 def clean_csv(start_year, end_year):
+
+    """
+    This function could be optimized for larger datasets, but that doesn't
+    seem necessary at the moment
+
+    """
+
     for year in range(start_year, end_year + 1):
         for file in CSV_DIR.glob(f"{year}_house_trades.csv"):    
-                    
+
             # Read with quotes escaped properly
             df = pd.read_csv(file, quoting=1, on_bad_lines='skip')
-            
+
             # Split Asset column
             df["Asset Name"] = df.Asset.str.split("(").str[0].str.strip()
             df["Asset Ticker"] = df.Asset.str.split("(").str[1].str.split(")").str[0].fillna('')
@@ -27,7 +40,10 @@ def clean_csv(start_year, end_year):
             df["Min Amount"] = df["Min Amount"].fillna(0).astype(int)
             df["Max Amount"] = df["Max Amount"].fillna(0).astype(int)
 
-            df = df.apply(lambda x: x.str.strip() if x.dtype == "object" else x)
+            # Clear all whitespace from the Asset Ticker column for database filtering
+            df["Asset Ticker"] = df["Asset Ticker"].str.strip()
 
             output_path = CSV_CLEANED_DIR / f"{year}_house_trades_cleaned.csv"
-            df.to_csv(output_path, index=False, quoting=1)
+
+            # Save the csv while ensuring incomplete rows are dropped
+            df.dropna().to_csv(output_path, index=False, quoting=1)

@@ -8,6 +8,5 @@ CREATE TABLE house_data (
    asset_ticker VARCHAR(10),
    asset_type CHAR(5),
    min_amount INTEGER,
-   max_amount INTEGER,
-   trade_id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY
+   max_amount INTEGER
 );

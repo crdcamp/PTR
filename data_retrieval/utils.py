@@ -16,7 +16,7 @@ import pandas as pd
 Not even sure if it's actually working honestly.... gonna take some tedious 
 testing and a bunch of work to find out
 
-After looking in to it, I think I have quite a mess on our hands with most
+After looking in to it, I think we have quite a mess on our hands with most
 print statements and loging (logging is especially messy). 
 I'll have to do a deep dive into this.
 

@@ -4,3 +4,4 @@
 *.pyc
 data
 populate_house_data_table.sql
+processing.log
