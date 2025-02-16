@@ -1,6 +1,5 @@
 BEGIN;
 
-
 CREATE TABLE IF NOT EXISTS public.house_data
 (
     politician_name character varying(50) COLLATE pg_catalog."default",
