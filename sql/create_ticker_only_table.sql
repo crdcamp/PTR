@@ -1,3 +1,4 @@
 CREATE TABLE house_data_filtered AS 
 SELECT * FROM house_data
-WHERE LENGTH(asset_ticker) > 0;
+WHERE LENGTH(asset_ticker) > 0
+AND asset_type = 'ST';

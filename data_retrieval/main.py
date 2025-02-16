@@ -16,5 +16,3 @@ def download_and_install_pdf(start_year, end_year):
 def extract_and_clean_csv(start_year, end_year):
     extract_pdf_as_csv(start_year,end_year)
     clean_csv(start_year, end_year)
-
-clean_csv(2021,2024)
